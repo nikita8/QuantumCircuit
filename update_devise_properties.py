@@ -28,86 +28,118 @@ IBMQ.save_account('53d53f699d4b706ce125b3fea389764d22ca4a5e031581e0db1e13abaa8a5
 IBMQ.update_account()
 IBMQ.load_account()
 
+qubit_error_offset = {
+  '1': -5,
+  '2': -2,
+  '4': -2,
+  '0': -5,
+  '3': -2
+}
+# manual_offset_qubits = ['1','2','4']
+manual_offset_qubits = [0,3]
+
 # devise_hash_sunday = {}
 devise_hash_monday = {}
 # devises = ['ibmq_vigo', 'ibmq_ourense', 'ibmq_16_melbourne', 'ibmqx2']
 devises = ['ibmq_vigo', 'ibmqx2']
 # devises = ['ibmq_16_melbourne']
-for devise_name in devises:
+# for devise_name in devises:
   # for i in range(10):
-  for i in range(10):
-    devise = IBMQ.get_backend(devise_name)
-    name = str(devise.name())
-    devise_hash_monday[name] = devise_hash_monday.get(name) or {}
-    # properties = devise.properties()
-    # coupling_map = devise.configuration().coupling_map
-    properties = devise.properties()
-    coupling_map = devise.configuration().coupling_map
+for i in range(10):
+  print("Run" + str(i))
+  devise = IBMQ.get_backend('ibmq_essex')
+  name = str(devise.name())
+  devise_hash_monday[name] = devise_hash_monday.get(name) or {}
+  # properties = devise.properties()
+  # coupling_map = devise.configuration().coupling_map
+  properties = devise.properties()
+  coupling_map = devise.configuration().coupling_map
 
-    #Quantum Circuit
-    circ = QuantumCircuit.from_qasm_file("grover_search.qasm")
-    # coupling_map = CouplingMap(coupling_list=coupling_map)
-    # pm = PassManager()
-    circuit=transpile(circ, backend=devise, coupling_map= coupling_map, backend_properties=properties)
-    # %matplotlib inline
-    # circuit.draw(output='mpl')
-    # backend = Aer.get_backend('qasm_simulator')
-    backend = devise
-    result = execute(circuit, backend=backend, shots = 1024).result()
-    count = result.get_counts()
-    # plot_histogram(count)
-    devise_hash_monday[name]['original_result'] = count
+  #Quantum Circuit
+  circ = QuantumCircuit.from_qasm_file("grover_search.qasm")
+  # coupling_map = CouplingMap(coupling_list=coupling_map)
+  # pm = PassManager()
+  circuit=transpile(circ, backend=devise, coupling_map= coupling_map, backend_properties=properties)
+  qasm_file = circuit.qasm()
+  %matplotlib inline
+  circuit.draw(output='mpl')
 
-    test_properties = properties.to_dict()
+  # backend = Aer.get_backend('qasm_simulator')
+  backend = devise
+  result = execute(circuit, backend=backend, shots = 1024).result()
+  count = result.get_counts()
+  plot_histogram(count)
+  devise_hash_monday[name]['original_result'] = count
 
-    # devise_hash_monday[name]['properties'] = test_properties
+  test_properties = properties.to_dict()
 
+  # devise_hash_monday[name]['properties'] = test_properties
 
-    #Noise constraints changed
-    parsed_properties =  test_properties.copy()
-    qubits = [[y['value'] for y in x] for x in parsed_properties['qubits']]
-    qubits_errors = list(set(flatten(qubits)))
-    gates_errors = list(set([ x['parameters'][0]['value'] for x in parsed_properties['gates']]))
+  #Noise constraints changed
+  parsed_properties =  test_properties.copy()
+  qubits = [[y['value'] for y in x] for x in parsed_properties['qubits']]
+  qubits_errors = list(set(flatten(qubits)))
+  gates_errors = list(set([ x['parameters'][0]['value'] for x in parsed_properties['gates']]))
 
-    gates_hash_list = []
-    for gate in parsed_properties['gates']:
-      gates_hash = {}
-      for k in gate:
-        lists = []
-        if k == 'parameters':
-          first_element = gate[k][0]
-          data = [x for x in gates_errors if x != first_element['value']]
-          random_data = random.choice(data)
-          first_element['value'] = random_data
-          gates_hash[k] = [first_element]
-        else:
-          gates_hash[k] = gate[k]
-      gates_hash_list.append(gates_hash)
+  gates_hash_list = []
+  for gate in parsed_properties['gates']:
+    qubit = gate['qubits']
+    gates_hash = {}
+    for k in gate:
+      if k == 'parameters':
+        qubit_gate_params = []
+        for qubit_param  in gate[k]:
+          if qubit_param['name'] == 'gate_error':
+            qubit = gate['qubits']
+            if set(qubit).issubset(set(manual_offset_qubits)):
+              # random_data = qubit_param['value'] + qubit_error_offset.get(str(qubit[0]))
+              random_data = qubit_error_offset.get(str(qubit[0]))
+              # print(random_data)
+            else:
+              data = [x for x in gates_errors if x != qubit_param['value']]
+              random_data = random.choice(data)
+            qubit_param['value'] = random_data
+          qubit_gate_params.append(qubit_param)
+        gates_hash[k] = qubit_gate_params
+      else:
+        gates_hash[k] = gate[k]
+    gates_hash_list.append(gates_hash)
 
-    qubit_list = []
-    for grouped_qubit in parsed_properties['qubits']:
-      data = []
-      for qubit in grouped_qubit:
-        data_hash = qubit
+  qubit_list = []
+  for i, grouped_qubit in enumerate(parsed_properties['qubits']):
+    data = []
+    manual_data = False
+    if i in manual_offset_qubits:
+      manual_data = True
+    for qubit in grouped_qubit:
+      data_hash = qubit
+      # might need to consider name as well
+      # if manual_data and data_hash['name'] == 'prob_meas0_prep1' or 'prob_meas1_prep0':
+      if manual_data:
+        # data_hash['value'] = data_hash['value'] + qubit_error_offset.get(str(i))
+        data_hash['value'] = qubit_error_offset.get(str(i))
+      else:
         data_hash['value'] = random.choice([x for x in qubits_errors if x != data_hash['value']])
-        data.append(data_hash)
-      qubit_list.append(data)
+      data.append(data_hash)
+    qubit_list.append(data)
 
-    parsed_properties['gates'] = gates_hash_list
-    parsed_properties['qubits'] = qubit_list
-      
-    new_properties = BackendProperties.from_dict(parsed_properties)
-    new_circuit=transpile(circ, backend=devise, coupling_map= coupling_map, backend_properties=new_properties)
-    # %matplotlib inline
-    # new_circuit.draw(output='mpl')
-    # backend = Aer.get_backend('qasm_simulator')
-    key = 'changed_' + str(i)
-    devise_hash_monday[name][key] = devise_hash_monday[name].get(key) or {}
-    devise_hash_monday[name][key]['properties'] = new_properties.to_dict()
-    devise_hash_monday[name][key]['originaLproperties'] = test_properties
-    new_result = execute(new_circuit, backend=backend, shots = 1024).result()
-    new_counts = result.get_counts()
-    devise_hash_monday[name][key]['result'] = new_counts
-    # from qiskit.tools.visualization import plot_histogram
-    # plot_histogram(new_counts)
+  parsed_properties['gates'] = gates_hash_list
+  parsed_properties['qubits'] = qubit_list
+    
+  new_properties = BackendProperties.from_dict(parsed_properties)
+  new_circuit=transpile(circ, backend=devise, coupling_map= coupling_map, backend_properties=new_properties)
+  new_circuit_qasm = new_circuit.qasm()
+  %matplotlib inline
+  new_circuit.draw(output='mpl')
+  # backend = Aer.get_backend('qasm_simulator')
+  key = 'changed_' + str(i)
+  devise_hash_monday[name][key] = devise_hash_monday[name].get(key) or {}
+  devise_hash_monday[name][key]['properties'] = new_properties.to_dict()
+  devise_hash_monday[name][key]['originalproperties'] = properties.to_dict()
+  devise_hash_monday[name][key]['qasm'] = new_circuit_qasm
+  new_result = execute(new_circuit, backend=backend, shots = 1024).result()
+  new_counts = new_result.get_counts()
+  devise_hash_monday[name][key]['result'] = new_counts
+  from qiskit.tools.visualization import plot_histogram
+  plot_histogram(new_counts)
 
