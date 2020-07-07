@@ -24,7 +24,7 @@ def flatten(items):
             yield x
 
 #backend configuration
-IBMQ.save_account('53d53f699d4b706ce125b3fea389764d22ca4a5e031581e0db1e13abaa8a565b1ec61e5b9f3ddeaf507b912aff0e1229b38ad38783ecc072df17686610e7b00d', overwrite=True)
+IBMQ.save_account('', overwrite=True)
 IBMQ.update_account()
 IBMQ.load_account()
 
